@@ -338,6 +338,7 @@ body::after{content:'';position:fixed;top:-300px;left:50%;width:900px;height:900
         <div style="color:var(--muted);font-size:.85rem">P = Present · A = Absent · E = Excused &nbsp;|&nbsp; 2 unexcused absences = removal flag</div>
         <button class="add-btn" id="addSessionBtn">+ Add Class Session</button>
       </div>
+      <div id="attSessionHeader"></div>
       <div class="att-grid" id="attGrid"></div>
     </div>
 
@@ -861,14 +862,34 @@ function openStuDetail(stuId) {
 // ===================== ATTENDANCE =====================
 function renderAttendance() {
   const sessions=getSessions();
+
+  // Build session headers with edit buttons above the grid
+  const sesHeaderEl = document.getElementById("attSessionHeader");
+  if(sesHeaderEl) {
+    sesHeaderEl.innerHTML = sessions.length
+      ? `<div style="display:flex;flex-wrap:wrap;gap:.5rem;margin-bottom:1rem;align-items:center">
+          <span style="font-size:.78rem;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:1px;">Sessions:</span>
+          ${sessions.map(s=>`<span style="display:inline-flex;align-items:center;gap:4px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:4px 10px;font-size:.8rem;">
+            <span style="font-weight:600">${s.name}</span>
+            <span style="color:var(--muted);font-size:.72rem">${s.date||""}</span>
+            <button class="ebtn" style="padding:1px 7px;font-size:.72rem;margin:0 0 0 4px" onclick="window.openEditSession('${s.id}')">✏️</button>
+          </span>`).join("")}
+        </div>`
+      : "";
+  }
+
   document.getElementById("attGrid").innerHTML=getStudents().map(stu=>{
     const abs=absences(stu,sessions);
     const absColor=abs>=2?"#ef4444":abs===1?"#f59e0b":"#10b981";
     return`<div class="att-card">
       <div class="ac-name"><span>${stu.name}${stu.removed?`<span class="removed-tag" style="margin-left:.4rem">OUT</span>`:""}</span><span class="att-count" style="color:${absColor}">Abs: ${abs}</span></div>
-      <div class="att-sessions">${sessions.map(s=>{const st=(stu.att||{})[s.id]||"P";return`<div class="att-session"><label title="${s.name} ${s.date||""}">${s.name}<br><span style="font-size:.6rem;color:var(--muted)">${s.date||""}</span></label><div class="att-seg">${["P","A","E"].map(opt=>`<button class="att-btn ${st===opt?opt:""}" onclick="toggleAtt('${stu.id}','${s.id}','${opt}')">${opt}</button>`).join("")}</div></div>`;}).join("")||`<span style="color:var(--muted);font-size:.8rem">No sessions added</span>`}</div>
+      <div class="att-sessions">${sessions.map(s=>{const st=(stu.att||{})[s.id]||"P";return`<div class="att-session"><label title="${s.name} ${s.date||""}">${s.name}<br><span style="font-size:.6rem;color:var(--muted)">${s.date||""}</span></label><div class="att-seg">${["P","A","E"].map(opt=>`<button class="att-btn ${st===opt?opt:""}" onclick="window.toggleAtt('${stu.id}','${s.id}','${opt}')">${opt}</button>`).join("")}</div></div>`;}).join("")||`<span style="color:var(--muted);font-size:.8rem">No sessions added yet</span>`}</div>
     </div>`;
   }).join("")||`<div class="empty">No students</div>`;
+
+  // Wire Add Session button every time attendance renders
+  const btn = document.getElementById("addSessionBtn");
+  if(btn) { btn.onclick = null; btn.addEventListener("click", openAddSession); }
 }
 
 window.toggleAtt=function(stuId,sesId,val){
@@ -1079,13 +1100,15 @@ function openAddSession(){
 
 function openEditSession(sesId){
   _editSesId=sesId; const s=getSessions().find(x=>x.id===sesId);
+  if(!s){ showToast("Session not found","bad"); return; }
   document.getElementById("sesTitle").textContent="Edit Class Session";
   document.getElementById("sesName").value=s.name; document.getElementById("sesDate").value=s.date||"";
   document.getElementById("sesDeleteBtn").style.display="block";
-  document.getElementById("sesDeleteBtn").onclick=deleteSession;
+  window._sesDeleteFn=deleteSession;
   openModal("sessionModal");
 }
 window.openEditSession=openEditSession;
+window.openAddSession=openAddSession;
 
 function saveSession(){
   const cl=cls(); const name=document.getElementById("sesName").value.trim();
@@ -1178,7 +1201,7 @@ document.getElementById("admLogoutBtn").addEventListener("click",logout);
 document.getElementById("chgPwBtn").addEventListener("click",()=>openModal("chgPwModal"));
 document.getElementById("pwSaveBtn").addEventListener("click",savePassword);
 document.getElementById("addStudentBtn").addEventListener("click",window.openAddStudent);
-document.getElementById("addSessionBtn").addEventListener("click",openAddSession);
+// addSessionBtn wired below in renderAttendance
 document.getElementById("addAssignBtn").addEventListener("click",openAddAssign);
 document.getElementById("addClassBtn").addEventListener("click",openAddClass);
 document.getElementById("addClassBtn2").addEventListener("click",openAddClass);
@@ -1188,6 +1211,7 @@ document.getElementById("smSaveBtn").addEventListener("click",saveStudent);
 document.getElementById("amSaveBtn").addEventListener("click",saveAssign);
 document.getElementById("amDeleteBtn").addEventListener("click",deleteAssign);
 document.getElementById("sesSaveBtn").addEventListener("click",saveSession);
+document.getElementById("sesDeleteBtn").addEventListener("click",function(){ if(window._sesDeleteFn) window._sesDeleteFn(); });
 document.getElementById("clsSaveBtn").addEventListener("click",saveClass);
 document.querySelectorAll(".overlay").forEach(o=>o.addEventListener("click",e=>{if(e.target===o) closeAll();}));
 
@@ -1201,3 +1225,4 @@ initFirebase();
 </script>
 </body>
 </html>
+
