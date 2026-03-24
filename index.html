@@ -811,7 +811,7 @@ _initFirebase();
     srow.innerHTML=sh;
     var abs=absences(stu,sessions);
     var wb=el("attWarnBanner");
-    if(abs>=2){ wb.style.display="flex"; wb.className="att-warn att-danger"; wb.innerHTML='⚠️ <strong>You have '+abs+' unexcused absence'+(abs>1?"s":"")+'.</strong>&nbsp; 2 or more absences may result in removal from the program.'; }
+    if(abs>=2){ wb.style.display="flex"; wb.className="att-warn att-danger"; wb.innerHTML='⚠️ <strong>You have '+abs+' unexcused absence'+(abs>1?"s":"")+'.</strong>  2 or more absences may result in removal from the program.'; }
     else if(abs===1){ wb.style.display="flex"; wb.className="att-warn"; wb.innerHTML='📌 You have <strong>1 unexcused absence</strong>. A second absence may result in removal.'; }
     else wb.style.display="none";
     el("stuCards").innerHTML=assigns.map(function(a){
@@ -1037,17 +1037,34 @@ _initFirebase();
     el("classesList").innerHTML=Object.values(classes).map(function(c){
       var sts=objToArr(c.students).filter(function(s){ return !s.removed; });
       var isActive=c.id===activeClassId;
-      return'<div class="class-row'+(isActive?" class-active":"")+'" style="cursor:pointer" onclick="APP.openEditClass(''+c.id+'')">'+
-        '<div style="flex:1">'+
-          '<div class="cr-name">'+c.name+(isActive?' <span class="info-chip" style="color:var(--accent)">Active</span>':'')+'</div>'+
-          '<div class="cr-info">'+sts.length+' students · '+objToArr(c.assignments).length+' assignments · '+(c.start||"?")+' → '+(c.end||"?")+'</div>'+
-        '</div>'+
-        '<div style="display:flex;gap:.5rem;flex-shrink:0">'+
-          (isActive?'':'<button class="ebtn" onclick="event.stopPropagation();APP.setActiveClass(''+c.id+'')">Set Active</button>')+
-          '<button class="ebtn" onclick="event.stopPropagation();APP.openEditClass(''+c.id+'')">✏️ Edit</button>'+
-        '</div>'+
-      '</div>';
+      var cid=c.id;
+      var row='<div class="class-row'+(isActive?" class-active":"")+'" style="cursor:pointer">';
+      row+='<div style="flex:1">';
+      row+='<div class="cr-name">'+c.name+(isActive?' <span class="info-chip" style="color:var(--accent)">Active</span>':'')+'</div>';
+      row+='<div class="cr-info">'+sts.length+' students · '+objToArr(c.assignments).length+' assignments · '+(c.start||"?")+' → '+(c.end||"?")+'</div>';
+      row+='</div>';
+      row+='<div style="display:flex;gap:.5rem;flex-shrink:0">';
+      if(!isActive) row+='<button class="ebtn" data-action="setactive" data-cid="'+cid+'">Set Active</button>';
+      row+='<button class="ebtn" data-action="editclass" data-cid="'+cid+'">✏️ Edit</button>';
+      row+='</div></div>';
+      return row;
     }).join("");
+    // Wire clicks using data attributes - avoids all quoting issues
+    el("classesList").querySelectorAll(".ebtn[data-action]").forEach(function(btn){
+      btn.addEventListener("click", function(e){
+        e.stopPropagation();
+        var action=btn.dataset.action;
+        var cid=btn.dataset.cid;
+        if(action==="setactive") APP.setActiveClass(cid);
+        else if(action==="editclass") APP.openEditClass(cid);
+      });
+    });
+    el("classesList").querySelectorAll(".class-row").forEach(function(row){
+      row.addEventListener("click", function(){
+        var btn=row.querySelector("[data-cid]");
+        if(btn) APP.openEditClass(btn.dataset.cid);
+      });
+    });
   }
 
   // ===================== SESSION MODAL =====================
@@ -1348,7 +1365,7 @@ _initFirebase();
     var c=classes[_editClassId]; if(!c) return;
     if(_editClassId===activeClassId){ showToast("Cannot delete the active class. Set another class as active first.","bad"); return; }
     var stuCount=objToArr(c.students).length;
-    if(!confirm("Delete ""+c.name+""? This will permanently remove "+stuCount+" students and all their data. This cannot be undone.")) return;
+    if(!confirm("Delete class: "+c.name+"? Permanently removes "+stuCount+" students. Cannot be undone.")) return;
     delete classes[_editClassId];
     scheduleSave(); closeAll(); buildAdmClassSel(); buildLoginUI(); renderAll();
     showToast("Class deleted","ok");
