@@ -532,33 +532,51 @@ body::after{content:'';position:fixed;top:-300px;left:50%;width:900px;height:900
 <div class="toast" id="toast"></div>
 
 <!-- FIREBASE -->
-<!-- Firebase SDK — module only for imports, exposes db to window -->
-<script type="module">
-import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
-import { getDatabase, ref, set, get, onValue } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-database.js";
-const app = initializeApp({
-  apiKey:"AIzaSyDzfVLkWeExs8KTSSMMAw0E5e5KwMfYo9c",
-  authDomain:"gp1-gradebook.firebaseapp.com",
-  databaseURL:"https://gp1-gradebook-default-rtdb.firebaseio.com",
-  projectId:"gp1-gradebook",
-  storageBucket:"gp1-gradebook.firebasestorage.app",
-  messagingSenderId:"984231332046",
-  appId:"1:984231332046:web:b5b5d9fbae86f85427689f"
-});
-const db = getDatabase(app);
-window._FB = { db, ref, set, get, onValue };
-window.dispatchEvent(new Event("fbReady"));
+<!-- Firebase SDK — loads via CDN scripts, no module scope issues -->
+<script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
+<script>
+window._firebaseReady = false;
+function _initFirebase() {
+  if(typeof firebase === "undefined") {
+    setTimeout(_initFirebase, 100);
+    return;
+  }
+  if(!window._fbdb) {
+    firebase.initializeApp({
+      apiKey:"AIzaSyDzfVLkWeExs8KTSSMMAw0E5e5KwMfYo9c",
+      authDomain:"gp1-gradebook.firebaseapp.com",
+      databaseURL:"https://gp1-gradebook-default-rtdb.firebaseio.com",
+      projectId:"gp1-gradebook",
+      storageBucket:"gp1-gradebook.firebasestorage.app",
+      messagingSenderId:"984231332046",
+      appId:"1:984231332046:web:b5b5d9fbae86f85427689f"
+    });
+    window._fbdb = firebase.database();
+    window._firebaseReady = true;
+  }
+}
+_initFirebase();
 </script>
 
-<!-- Main app — regular script, waits for fbReady -->
+<!-- Main app -->
 <script>
-window.addEventListener("fbReady", function() {
-  const { db, ref, set, get, onValue } = window._FB;
+(function() {
+  // Firebase refs - _fbdb set after ready check in startApp
+  var _fbdb = null;
+
+  // Wait for Firebase to be ready before starting
+  function startApp() {
+    if(!window._fbdb || !window._firebaseReady) {
+      setTimeout(startApp, 100);
+      return;
+    }
+    _fbdb = window._fbdb;
 
   // ===================== DEFAULTS =====================
   const DEF_ASSIGNS = [
     {id:"a1",name:"BSA",max:50,cat:"Knowledge Check",link:"",linkLabel:"",active:true},
-    {id:"a2",name:"P&L",max:50,cat:"Knowledge Check",link:"",linkLabel:"",active:true},
+    {id:"a2",name:"P\u0026L",max:50,cat:"Knowledge Check",link:"",linkLabel:"",active:true},
     {id:"a3",name:"Reporting",max:50,cat:"Knowledge Check",link:"",linkLabel:"",active:false},
     {id:"a4",name:"Daily Tools",max:50,cat:"Knowledge Check",link:"",linkLabel:"",active:true},
     {id:"a5",name:"Disposition",max:50,cat:"Knowledge Check",link:"",linkLabel:"",active:true},
@@ -683,15 +701,15 @@ window.addEventListener("fbReady", function() {
     clearTimeout(_saveTimer);
     _saveTimer=setTimeout(function(){
       setFbStatus("loading");
-      set(ref(db,"/"), {classes:classes, adminPw:adminPw})
+      _fbdb.ref("/").set({classes:classes, adminPw:adminPw})
         .then(function(){ setFbStatus("ok"); })
-        .catch(function(){ setFbStatus("err"); showToast("Save failed","bad"); });
+        .catch(function(e){ console.error("Save error:",e); setFbStatus("err"); showToast("Save failed — check connection","bad"); });
     }, 800);
   }
 
   // Init Firebase data
   setFbStatus("loading");
-  get(ref(db,"/")).then(function(snap){
+  _fbdb.ref("/").get().then(function(snap){
     if(snap.exists()){
       var data=snap.val();
       if(data.classes){ Object.keys(classes).forEach(function(k){ delete classes[k]; }); Object.assign(classes,data.classes); }
@@ -703,12 +721,12 @@ window.addEventListener("fbReady", function() {
         sessions:{},
         students:arrToObj(JSON.parse(JSON.stringify(DEF_STUDENTS)))
       };
-      set(ref(db,"/"), {classes:classes, adminPw:adminPw});
+      _fbdb.ref("/").set({classes:classes, adminPw:adminPw});
     }
     setFbStatus("ok");
     buildLoginUI();
     // Live sync
-    onValue(ref(db,"/"), function(s2){
+    _fbdb.ref("/").on("value", function(s2){
       if(!s2.exists()) return;
       var d=s2.val();
       if(d.classes){ Object.keys(classes).forEach(function(k){ delete classes[k]; }); Object.assign(classes,d.classes); }
@@ -1422,7 +1440,14 @@ window.addEventListener("fbReady", function() {
   var st=document.createElement("style");
   st.textContent=".ebtn{background:rgba(56,189,248,.1);border:1px solid rgba(56,189,248,.25);color:var(--accent);border-radius:6px;padding:3px 10px;font-size:.78rem;cursor:pointer;font-family:'DM Sans',sans-serif;font-weight:600;transition:all .15s;margin:0 2px}.ebtn:hover{background:rgba(56,189,248,.22)}";
   document.head.appendChild(st);
-});
+  } // end startApp
+
+  if(document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", startApp);
+  } else {
+    startApp();
+  }
+})();
 </script>
 </body>
 </html>
