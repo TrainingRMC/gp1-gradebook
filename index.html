@@ -532,46 +532,40 @@ body::after{content:'';position:fixed;top:-300px;left:50%;width:900px;height:900
 <div class="toast" id="toast"></div>
 
 <!-- FIREBASE -->
-<!-- Firebase SDK — loads via CDN scripts, no module scope issues -->
-<script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js" onerror="window._fbFailed=true"></script>
+<script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js" onerror="window._fbFailed=true"></script>
 <script>
+window._fbdb = null;
 window._firebaseReady = false;
-function _initFirebase() {
-  if(typeof firebase === "undefined") {
-    setTimeout(_initFirebase, 100);
-    return;
-  }
-  if(!window._fbdb) {
-    firebase.initializeApp({
-      apiKey:"AIzaSyDzfVLkWeExs8KTSSMMAw0E5e5KwMfYo9c",
-      authDomain:"gp1-gradebook.firebaseapp.com",
-      databaseURL:"https://gp1-gradebook-default-rtdb.firebaseio.com",
-      projectId:"gp1-gradebook",
-      storageBucket:"gp1-gradebook.firebasestorage.app",
-      messagingSenderId:"984231332046",
-      appId:"1:984231332046:web:b5b5d9fbae86f85427689f"
-    });
-    window._fbdb = firebase.database();
-    window._firebaseReady = true;
-  }
+try {
+  firebase.initializeApp({
+    apiKey:"AIzaSyDzfVLkWeExs8KTSSMMAw0E5e5KwMfYo9c",
+    authDomain:"gp1-gradebook.firebaseapp.com",
+    databaseURL:"https://gp1-gradebook-default-rtdb.firebaseio.com",
+    projectId:"gp1-gradebook",
+    storageBucket:"gp1-gradebook.firebasestorage.app",
+    messagingSenderId:"984231332046",
+    appId:"1:984231332046:web:b5b5d9fbae86f85427689f"
+  });
+  window._fbdb = firebase.database();
+  window._firebaseReady = true;
+} catch(e) {
+  console.warn("Firebase init failed:", e);
+  window._firebaseReady = false;
 }
-_initFirebase();
 </script>
 
 <!-- Main app -->
 <script>
 (function() {
-  // Firebase refs - _fbdb set after ready check in startApp
-  var _fbdb = null;
+  // Firebase - use if available, otherwise run locally
+  var _fbdb = window._fbdb || null;
+  var _useFirebase = window._firebaseReady && _fbdb !== null;
 
-  // Wait for Firebase to be ready before starting
   function startApp() {
-    if(!window._fbdb || !window._firebaseReady) {
-      setTimeout(startApp, 100);
-      return;
-    }
-    _fbdb = window._fbdb;
+    _fbdb = window._fbdb || null;
+    _useFirebase = window._firebaseReady && _fbdb !== null;
 
   // ===================== DEFAULTS =====================
   const DEF_ASSIGNS = [
@@ -700,49 +694,67 @@ _initFirebase();
   function scheduleSave(){
     clearTimeout(_saveTimer);
     _saveTimer=setTimeout(function(){
+      if(!_fbdb || !_useFirebase) {
+        setFbStatus("err");
+        return;
+      }
       setFbStatus("loading");
       _fbdb.ref("/").set({classes:classes, adminPw:adminPw})
         .then(function(){ setFbStatus("ok"); })
-        .catch(function(e){ console.error("Save error:",e); setFbStatus("err"); showToast("Save failed — check connection","bad"); });
+        .catch(function(e){ console.error("Save error:",e); setFbStatus("err"); showToast("Save failed","bad"); });
     }, 800);
   }
 
   // Init Firebase data
-  setFbStatus("loading");
-  _fbdb.ref("/").get().then(function(snap){
-    if(snap.exists()){
-      var data=snap.val();
-      if(data.classes){ Object.keys(classes).forEach(function(k){ delete classes[k]; }); Object.assign(classes,data.classes); }
-      if(data.adminPw) adminPw=data.adminPw;
+  function loadData() {
+    if(_fbdb && _useFirebase) {
+      setFbStatus("loading");
+      _fbdb.ref("/").get().then(function(snap){
+        if(snap.exists()){
+          var data=snap.val();
+          if(data.classes){ Object.keys(classes).forEach(function(k){ delete classes[k]; }); Object.assign(classes,data.classes); }
+          if(data.adminPw) adminPw=data.adminPw;
+        } else {
+          classes["c1"]={
+            id:"c1",name:"GP1 – 2026 Cohort 1",start:"2026-01-06",end:"2026-06-30",
+            assignments:arrToObj(JSON.parse(JSON.stringify(DEF_ASSIGNS))),
+            sessions:{},
+            students:arrToObj(JSON.parse(JSON.stringify(DEF_STUDENTS)))
+          };
+          _fbdb.ref("/").set({classes:classes, adminPw:adminPw});
+        }
+        setFbStatus("ok");
+        buildLoginUI();
+        _fbdb.ref("/").on("value", function(s2){
+          if(!s2.exists()) return;
+          var d=s2.val();
+          if(d.classes){ Object.keys(classes).forEach(function(k){ delete classes[k]; }); Object.assign(classes,d.classes); }
+          if(d.adminPw) adminPw=d.adminPw;
+          if(el("adminScreen").classList.contains("active")) renderAll();
+          if(el("studentScreen").classList.contains("active") && _curStuId) showStudent();
+        });
+      }).catch(function(e){
+        console.error("Firebase load error:",e);
+        setFbStatus("err");
+        showToast("Firebase error — using default data","warn");
+        seedDefault();
+      });
     } else {
-      classes["c1"]={
-        id:"c1",name:"GP1 – 2026 Cohort 1",start:"2026-01-06",end:"2026-06-30",
-        assignments:arrToObj(JSON.parse(JSON.stringify(DEF_ASSIGNS))),
-        sessions:{},
-        students:arrToObj(JSON.parse(JSON.stringify(DEF_STUDENTS)))
-      };
-      _fbdb.ref("/").set({classes:classes, adminPw:adminPw});
+      setFbStatus("err");
+      seedDefault();
     }
-    setFbStatus("ok");
+  }
+
+  function seedDefault(){
+    if(Object.keys(classes).length === 0) {
+      classes["c1"]={id:"c1",name:"GP1 – 2026 Cohort 1",start:"2026-01-06",end:"2026-06-30",
+        assignments:arrToObj(JSON.parse(JSON.stringify(DEF_ASSIGNS))),sessions:{},
+        students:arrToObj(JSON.parse(JSON.stringify(DEF_STUDENTS)))};
+    }
     buildLoginUI();
-    // Live sync
-    _fbdb.ref("/").on("value", function(s2){
-      if(!s2.exists()) return;
-      var d=s2.val();
-      if(d.classes){ Object.keys(classes).forEach(function(k){ delete classes[k]; }); Object.assign(classes,d.classes); }
-      if(d.adminPw) adminPw=d.adminPw;
-      if(el("adminScreen").classList.contains("active")) renderAll();
-      if(el("studentScreen").classList.contains("active") && _curStuId) showStudent();
-    });
-  }).catch(function(e){
-    console.error(e);
-    setFbStatus("err");
-    showToast("Firebase offline — running locally","warn");
-    classes["c1"]={id:"c1",name:"GP1 – 2026 Cohort 1",start:"2026-01-06",end:"2026-06-30",
-      assignments:arrToObj(JSON.parse(JSON.stringify(DEF_ASSIGNS))),sessions:{},
-      students:arrToObj(JSON.parse(JSON.stringify(DEF_STUDENTS)))};
-    buildLoginUI();
-  });
+  }
+
+  loadData();
 
   // ===================== LOGIN =====================
   function buildLoginUI(){
