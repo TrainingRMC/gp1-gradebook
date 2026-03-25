@@ -460,9 +460,14 @@ body::after{content:'';position:fixed;top:-300px;left:50%;width:900px;height:900
 <span style="color:#a78bfa">WHERE</span> p.REPORT_DATE &gt;= <span style="color:#f9a8d4">DATEADD</span>(day, -30, <span style="color:#f9a8d4">CURRENT_DATE</span>())<br>
 <span style="color:#a78bfa">AND</span> e.EMPLOYEE_NAME <span style="color:#a78bfa">IN</span> (<br>
 &nbsp;&nbsp;<span style="color:#94a3b8">-- Paste your class roster names here, one per line:</span><br>
-&nbsp;&nbsp;<span style="color:#fff">'Aaron Lozano','Alene Mckissick','Amber Gallegos','Amy Taylor',</span><br>
-&nbsp;&nbsp;<span style="color:#fff">'Ana Aguilar','Ana Garza','Arely Herrera','Ashley Thomas'</span><br>
-&nbsp;&nbsp;<span style="color:#94a3b8">-- ... add rest of roster</span><br>
+&nbsp;&nbsp;<span style="color:#fff">'Aaron Lozano', 'Alene Mckissick', 'Amber Gallegos', 'Amy Taylor',</span><br>
+&nbsp;&nbsp;<span style="color:#fff">'Ana Aguilar', 'Ana Garza', 'Arely Herrera', 'Ashley Thomas',</span><br>
+&nbsp;&nbsp;<span style="color:#fff">'Austin Jones', 'Carrie Turner', 'Christina Moore', 'Cynthia Lewis',</span><br>
+&nbsp;&nbsp;<span style="color:#fff">'Elizabeth Garcia', 'Francisco Lares', 'Ginger Gonzalez', 'Gustavo Hernandez Lara',</span><br>
+&nbsp;&nbsp;<span style="color:#fff">'Gwen Jenkins', 'Jaime Anaya Raya', 'Jakob Cervantes', 'Johanna Arana',</span><br>
+&nbsp;&nbsp;<span style="color:#fff">'Karen Thomas', 'Martha Santos', 'Monica Crew', 'Rasha Tyler',</span><br>
+&nbsp;&nbsp;<span style="color:#fff">'Ruth Garcia', 'Sandy Puente', 'Shatiana Hill', 'Shontario Roland',</span><br>
+&nbsp;&nbsp;<span style="color:#fff">'Vince Williams', 'Zoie Tahseen'</span><br>
 )<br>
 <span style="color:#a78bfa">ORDER BY</span> e.EMPLOYEE_NAME<span style="color:#fff">;</span>
         </div>
