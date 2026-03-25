@@ -410,6 +410,7 @@ body::after{content:'';position:fixed;top:-300px;left:50%;width:900px;height:900
       </div>
 
       <!-- Summary cards row -->
+      <div id="prodBanner" style="margin-bottom:1.25rem"></div>
       <div id="prodSummaryCards" style="display:none;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:.9rem;margin-bottom:1.5rem"></div>
 
       <!-- Setup instructions (shown when no data) -->
@@ -1687,13 +1688,13 @@ _loadScript("https://unpkg.com/firebase@10.8.0/firebase-app-compat.js", function
   var PROD_GROUPS = [
     { label:"Applications", icon:"📋", keys:[
       {k:"Apps",                    label:"Apps",           tip:"Total applications taken"},
-      {k:"Apps_vs_Median_Pct",      label:"vs Median %",    fmt:"pct",   tip:"Apps vs company median %"},
+      {k:"Apps_vs_Median_Pct",      label:"vs Median %",    fmt:"pct",   tip:"Apps vs company median %", medianRef:"Company_Median_Apps"},
       {k:"Apps_Funded",             label:"Funded",         tip:"Apps funded"},
       {k:"Company_Median_Apps",     label:"Median Apps",    tip:"Company median apps",  median:true}
     ]},
     { label:"Loans", icon:"🏦", keys:[
       {k:"Loans",                   label:"Loans",          tip:"Total loans"},
-      {k:"Loans_vs_Median_Pct",     label:"vs Median %",    fmt:"pct",   tip:"Loans vs company median %"},
+      {k:"Loans_vs_Median_Pct",     label:"vs Median %",    fmt:"pct",   tip:"Loans vs company median %", medianRef:"Company_Median_Loans"},
       {k:"Loans_Small",             label:"Small",          tip:"Small loans"},
       {k:"Loans_Large",             label:"Large",          tip:"Large loans"},
       {k:"Loans_Auto",              label:"Auto",           tip:"Auto loans"},
@@ -1701,7 +1702,7 @@ _loadScript("https://unpkg.com/firebase@10.8.0/firebase-app-compat.js", function
     ]},
     { label:"Volume", icon:"💵", keys:[
       {k:"Volume_Financed",         label:"Vol Financed",   fmt:"dollar", tip:"Total volume financed"},
-      {k:"Volume_vs_Median_Pct",    label:"vs Median %",    fmt:"pct",    tip:"Volume vs company median %"},
+      {k:"Volume_vs_Median_Pct",    label:"vs Median %",    fmt:"pct",    tip:"Volume vs company median %", medianRef:"Company_Median_Volume"},
       {k:"Auto_Volume",             label:"Auto Vol",       fmt:"dollar", tip:"Auto loan volume"},
       {k:"Company_Median_Volume",   label:"Median Vol",     fmt:"dollar", tip:"Company median volume", median:true}
     ]},
@@ -1812,17 +1813,7 @@ _loadScript("https://unpkg.com/firebase@10.8.0/firebase-app-compat.js", function
     });
 
     el("prodSummaryCards").innerHTML="";
-    el("prodTableWrap").insertAdjacentHTML("beforebegin", bannerHtml);
-    // Only insert banner once
-    var existingBanner=document.getElementById("prodBanner");
-    if(!existingBanner){
-      var bDiv=document.createElement("div");
-      bDiv.id="prodBanner";
-      bDiv.innerHTML=bannerHtml;
-      el("prodTableWrap").parentNode.insertBefore(bDiv, el("prodTableWrap"));
-    } else {
-      existingBanner.innerHTML=bannerHtml;
-    }
+    el("prodBanner").innerHTML=bannerHtml;
 
     // Sort rows
     if(_prodSortKey==="class_pct"){
@@ -1863,10 +1854,10 @@ _loadScript("https://unpkg.com/firebase@10.8.0/firebase-app-compat.js", function
 
     el("prodHead").innerHTML="<tr>"+
       '<th style="position:sticky;left:0;background:var(--surface2);z-index:10;min-width:160px">Name</th>'+
-      sortTh("class_pct","Class %","Sort by class score")+
+      sortTh("class_pct","GP1 Score","GP1 training class score")+
       sortTh("vs_Company_rank","vs Company","Sort by performance vs median")+
       visMetrics.map(function(m){return sortTh(m.k,m.label,m.tip);}).join("")+
-      "<th>AI Insight</th></tr>";
+      "</tr>";
 
     // Wire sort clicks
     el("prodHead").querySelectorAll("[data-issortth]").forEach(function(th){
@@ -1894,31 +1885,26 @@ _loadScript("https://unpkg.com/firebase@10.8.0/firebase-app-compat.js", function
           var ratio=maxes[m.k]?raw/maxes[m.k]:0;
           c=ratio>=0.75?"#10b981":ratio>=0.50?"#38bdf8":ratio>=0.25?"#f59e0b":"#ef4444";
         }
+        // Show median reference if available
+        var medianNote="";
+        if(m.medianRef&&pm.raw[m.medianRef]!==undefined){
+          medianNote='<div style="font-size:.68rem;color:var(--muted);margin-top:2px">median: '+fmtVal(null,pm.raw[m.medianRef])+'</div>';
+        }
         return '<td><div class="prod-bar-wrap">'+
           '<div class="prod-bar-bg"><div class="prod-bar-fill" style="width:'+Math.min(100,Math.round(m.fmt==="pct"?Math.min(raw,200)/2:maxes[m.k]?raw/maxes[m.k]*100:0))+'%;background:'+c+'"></div></div>'+
           '<span class="prod-val" style="color:'+c+'">'+fmtMetric(m,raw)+'</span>'+
-          '</div></td>';
+          '</div>'+medianNote+'</td>';
       }).join("");
-
-      var hasData=pm&&pm.raw&&(parseFloat(pm.raw["Apps"]||0)>0||parseFloat(pm.raw["Loans"]||0)>0);
-      var insightCell=hasData
-        ?'<td><button class="ebtn" style="font-size:.75rem;white-space:nowrap" data-stuinsight="'+stu.id+'">✨ Insight</button>'+
-          '<div id="insight_'+stu.id+'" style="font-size:.75rem;color:var(--muted2);margin-top:.3rem;max-width:260px;line-height:1.5"></div></td>'
-        :'<td style="color:var(--muted);font-size:.78rem">No data</td>';
 
       return "<tr>"+
         '<td style="position:sticky;left:0;background:var(--surface);z-index:5;font-weight:600">'+stu.name+'</td>'+
         '<td><span class="pct-pill" style="background:'+pColor+'22;color:'+pColor+';border:1px solid '+pColor+'44">'+Math.round(pct*100)+'%</span></td>'+
         '<td>'+vsPill+'</td>'+
         metricCells+
-        insightCell+
         "</tr>";
     }).join("")||'<tr><td colspan="20" class="empty">No students</td></tr>';
 
-    // Wire AI insight buttons
-    el("prodBody").querySelectorAll("[data-stuinsight]").forEach(function(btn){
-      btn.addEventListener("click",function(){ APP.getAIInsight(btn.dataset.stuinsight); });
-    });
+
   }
 
 
