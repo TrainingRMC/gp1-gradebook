@@ -308,6 +308,7 @@ body::after{content:'';position:fixed;top:-300px;left:50%;width:900px;height:900
     <div class="topbar-right">
       <span id="fbStatusAdm" class="fb-status fb-loading">⟳ Connecting</span>
       <span class="info-chip" style="color:var(--gold);border-color:rgba(245,158,11,.3)">⚙ ADMIN</span>
+      <button class="btn-admin" id="exportBtn">📥 Export Data</button>
       <button class="btn-admin" id="chgPwBtn">🔒 Change Password</button>
       <button class="btn-logout" id="admLogoutBtn">Sign Out</button>
     </div>
@@ -525,6 +526,47 @@ body::after{content:'';position:fixed;top:-300px;left:50%;width:900px;height:900
     <div class="m-actions">
       <button class="btn-save" id="pwSaveBtn">Update Password</button>
       <button class="btn-cancel" onclick="closeAll()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Export Modal -->
+<div class="overlay" id="exportModal">
+  <div class="modal">
+    <h3>📥 Export & Backup Data</h3>
+    <p style="color:var(--muted);font-size:.85rem;margin-bottom:1.5rem">Download a copy of all your data. Save it to OneDrive or your desktop after every class session as a backup.</p>
+
+    <div style="display:flex;flex-direction:column;gap:1rem">
+
+      <div style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:1.25rem">
+        <div style="font-weight:700;margin-bottom:.35rem">📊 Export Current Class to CSV</div>
+        <div style="color:var(--muted);font-size:.82rem;margin-bottom:.85rem">Opens directly in Excel. Includes all students, grades, attendance, and scores for the active class.</div>
+        <button class="btn-save" id="exportCSVBtn" style="width:auto;padding:.6rem 1.5rem">Download CSV</button>
+      </div>
+
+      <div style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:1.25rem">
+        <div style="font-weight:700;margin-bottom:.35rem">📋 Export All Classes to CSV</div>
+        <div style="color:var(--muted);font-size:.82rem;margin-bottom:.85rem">One CSV file per class — downloads as separate files. Use this to back up all cohorts at once.</div>
+        <button class="btn-save" id="exportAllCSVBtn" style="width:auto;padding:.6rem 1.5rem">Download All Classes</button>
+      </div>
+
+      <div style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:1.25rem">
+        <div style="font-weight:700;margin-bottom:.35rem">💾 Full Database Backup (JSON)</div>
+        <div style="color:var(--muted);font-size:.82rem;margin-bottom:.85rem">Complete backup of everything — all classes, grades, assignments, sessions, attendance. Use this to restore data if needed.</div>
+        <button class="btn-save" id="exportJSONBtn" style="width:auto;padding:.6rem 1.5rem">Download JSON Backup</button>
+      </div>
+
+      <div style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:1.25rem">
+        <div style="font-weight:700;margin-bottom:.35rem">📤 Restore from JSON Backup</div>
+        <div style="color:var(--muted);font-size:.82rem;margin-bottom:.85rem">Upload a previously saved JSON backup to restore all data. Warning: this will overwrite current data.</div>
+        <input type="file" id="restoreFileInput" accept=".json" style="display:none" />
+        <button class="btn-save" id="restoreBtn" style="width:auto;padding:.6rem 1.5rem;background:linear-gradient(135deg,var(--orange),#d97706)">Choose Backup File</button>
+        <span id="restoreFileName" style="color:var(--muted);font-size:.8rem;margin-left:.75rem"></span>
+      </div>
+
+    </div>
+    <div class="m-actions" style="margin-top:1.25rem">
+      <button class="btn-cancel" onclick="closeAll()">Close</button>
     </div>
   </div>
 </div>
@@ -1451,6 +1493,123 @@ _loadScript("https://unpkg.com/firebase@10.8.0/firebase-app-compat.js", function
     openStuDetailModal:openStuDetail
   };
 
+  // ===================== EXPORT FUNCTIONS =====================
+  function exportClassCSV(cl) {
+    var assigns = objToArr(cl.assignments).filter(function(a){ return a.active !== false; });
+    var sessions = objToArr(cl.sessions).sort(function(a,b){ return (a.date||"").localeCompare(b.date||""); });
+    var students = objToArr(cl.students);
+
+    // Build header row
+    var headers = ["Name","Branch","BM","Supervisor","Password"];
+    assigns.forEach(function(a){ headers.push(a.name+" ("+a.max+"pts)"); });
+    headers.push("Raw Score","Absence Deductions","Final Score","Max Points","Percentage","Pass/Fail");
+    sessions.forEach(function(s){ headers.push(s.name+" ("+s.date+")"); });
+    headers.push("Total Absences");
+
+    var rows = [headers];
+
+    // Sort by final score descending
+    var sorted = students.slice().sort(function(a,b){
+      return getTotal(b,assigns) - getTotal(a,assigns);
+    });
+
+    sorted.forEach(function(stu){
+      var raw = getRawTotal(stu, assigns);
+      var deduct = getAbsDeduction(stu, sessions);
+      var final = Math.max(0, raw - deduct);
+      var mx = getMax(assigns);
+      var pct = mx ? Math.round((final/mx)*100) : 0;
+      var abs = absences(stu, sessions);
+      var row = [
+        stu.name,
+        stu.branch||"",
+        stu.bm||"",
+        stu.sup||"",
+        stu.pw
+      ];
+      assigns.forEach(function(a){
+        var v = stu.grades&&stu.grades[a.id]!==undefined ? stu.grades[a.id] : 0;
+        row.push(v);
+      });
+      row.push(raw, deduct>0?"-"+deduct:"0", final, mx, pct+"%", pct>=80?"PASS":"BELOW 80%");
+      sessions.forEach(function(s){
+        row.push((stu.att&&stu.att[s.id])||"P");
+      });
+      row.push(abs);
+      rows.push(row);
+    });
+
+    // Convert to CSV
+    var rows2 = rows.map(function(row){
+      return row.map(function(cell){
+        var c = String(cell);
+        if(c.indexOf(',') >= 0 || c.indexOf('"') >= 0) {
+          c = '"' + c.replace(/"/g,'""') + '"';
+        }
+        return c;
+      }).join(',');
+    });
+    var csv = rows2.join('\n');
+
+        downloadFile(cl.name.replace(/[^a-z0-9]/gi,"_")+"_gradebook.csv", csv, "text/csv");
+    showToast("CSV downloaded — open in Excel","ok");
+  }
+
+  function exportAllCSV() {
+    Object.values(classes).forEach(function(cl, i){
+      setTimeout(function(){ exportClassCSV(cl); }, i * 500);
+    });
+    showToast("Downloading "+Object.keys(classes).length+" class files","ok");
+  }
+
+  function exportJSON() {
+    var backup = {
+      exportDate: new Date().toISOString(),
+      exportedBy: "GP1 Gradebook Portal",
+      classes: classes,
+      adminPw: adminPw
+    };
+    var json = JSON.stringify(backup, null, 2);
+    var date = new Date().toISOString().split("T")[0];
+    downloadFile("GP1_Gradebook_Backup_"+date+".json", json, "application/json");
+    showToast("Full backup downloaded","ok");
+  }
+
+  function restoreFromJSON(file) {
+    var reader = new FileReader();
+    reader.onload = function(e) {
+      try {
+        var data = JSON.parse(e.target.result);
+        if(!data.classes) { showToast("Invalid backup file","bad"); return; }
+        if(!confirm("This will replace ALL current data with the backup. Are you sure?")) return;
+        Object.keys(classes).forEach(function(k){ delete classes[k]; });
+        Object.assign(classes, data.classes);
+        if(data.adminPw) adminPw = data.adminPw;
+        scheduleSave();
+        buildAdmClassSel();
+        buildLoginUI();
+        renderAll();
+        closeAll();
+        showToast("Data restored successfully from backup","ok");
+      } catch(err) {
+        showToast("Failed to read backup file","bad");
+      }
+    };
+    reader.readAsText(file);
+  }
+
+  function downloadFile(filename, content, mimeType) {
+    var blob = new Blob([content], {type: mimeType});
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
+  }
+
   // ===================== BUTTON WIRING =====================
   function wireButtons() {
   function wire(id,fn){ var b=el(id); if(b) b.onclick=fn; }
@@ -1473,6 +1632,18 @@ _loadScript("https://unpkg.com/firebase@10.8.0/firebase-app-compat.js", function
   wire("ecSaveBtn", saveEditClass);
   wire("ecDeleteBtn", deleteClass);
   wire("chgPwBtn", function(){ el("pwErr").style.display="none"; openModal("chgPwModal"); });
+  wire("exportBtn", function(){ openModal("exportModal"); });
+  wire("exportCSVBtn", function(){ exportClassCSV(cls()); });
+  wire("exportAllCSVBtn", exportAllCSV);
+  wire("exportJSONBtn", exportJSON);
+  wire("restoreBtn", function(){ el("restoreFileInput").click(); });
+  el("restoreFileInput").addEventListener("change", function(e){
+    var file = e.target.files[0];
+    if(!file) return;
+    el("restoreFileName").textContent = file.name;
+    restoreFromJSON(file);
+    e.target.value = "";
+  });
   wire("pwSaveBtn", savePassword);
   wire("sortGradeBtn", function(){ _sortByGrade=!_sortByGrade; renderRoster(); });
 
